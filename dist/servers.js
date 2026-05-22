@@ -40,7 +40,7 @@ const LANGUAGE_SERVERS = {
     cpp: {
         language: 'cpp',
         command: 'clangd',
-        args: ['--stdio'],
+        args: [],
         install_hint: 'Install clangd from https://clangd.llvm.org/installation or via your package manager.',
     },
     rust: {
