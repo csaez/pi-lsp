@@ -1,4 +1,4 @@
-import { resolve_project_trust } from '@spences10/pi-project-trust';
+import { resolve_project_trust } from './vendor/pi-project-trust/index.js';
 import { readFile } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 import { file_path_to_uri, LspClient, } from './client.js';
