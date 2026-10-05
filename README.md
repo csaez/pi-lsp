@@ -12,6 +12,61 @@ Fork of [`@spences10/pi-lsp`](https://github.com/spences10/my-pi/tree/main/packa
 The diff against upstream is confined to `src/servers.ts` and its tests.
 `dist/` is committed because pi installs git packages without building.
 
+## Updating from upstream (instructions for humans and AI agents)
+
+Upstream is the monorepo `https://github.com/spences10/my-pi`, package
+path `packages/pi-lsp`. This repo is a standalone copy, not a git fork,
+so history is not shared. The `upstream` git remote points at the
+monorepo and `.upstream-base` holds the upstream commit this tree was
+last synced to.
+
+### Fork patch (the only intentional divergence)
+
+Keep this list current. Everything not listed must equal upstream.
+
+- `src/servers.ts`: `.c .cc .cpp .cxx .h .hpp .hxx` -> `cpp`; `cpp`
+  entry in `LANGUAGE_SERVERS` (clangd, no args); `compile_commands.json`
+  and `CMakeLists.txt` in `WORKSPACE_MARKERS`; `ty` entry in
+  `PYTHON_SERVERS` (`ty server`); `ty` accepted by
+  `MY_PI_LSP_PYTHON_SERVER`; auto mode tries `ty` before `pylsp`;
+  final fallback and "no server" error hint use `ty`.
+- `src/servers.test.ts`: tests for the above.
+- Tooling differences (not upstream's): plain `tsc` + `vitest` instead of
+  `vite-plus`/pnpm, `typescript` ^7 (the TS 7 native LSP integration tests need it; TS 5 fails them), pinned versions instead of `workspace:*`/`catalog:`
+  in `package.json`, committed `dist/`, `scripts/`, `.upstream-base`.
+
+### Procedure
+
+1. `scripts/sync-upstream.sh` (optionally pass a ref, default
+   `upstream/main`). It 3-way merges `src/` and `test/` from
+   `.upstream-base` -> new upstream, rewriting `vite-plus/test` imports to
+   `vitest`. Fork changes in `servers.ts` and `servers.test.ts` are
+   preserved. On a clean run it updates `.upstream-base`.
+2. Conflicts show as `<<<<<<< fork` / `>>>>>>> upstream` markers. The
+   likely spot is the Python resolution in `servers.ts`
+   (`resolve_python_server`). Keep upstream's new logic and re-apply the
+   fork patch above on top. Then write the new commit into
+   `.upstream-base`.
+3. The script prints upstream changes to `package.json` and tsconfig
+   files. Port them by hand, keeping the fork's tooling. In particular
+   bump `@spences10/pi-*` dependency versions to match the published
+   versions upstream uses (`npm view @spences10/pi-child-env version`
+   etc.), and update `package-lock.json` with `npm install`.
+4. Files reported as `REMOVED upstream` are not deleted automatically.
+   Review and delete if appropriate.
+5. Verify: `npm run check && chop npm test && chop npm run build`. `dist/` must be
+   rebuilt and committed (pi installs git packages without building).
+6. Bump `version` to `<upstream version>-clangd-ty.N`, update the
+   "0.0.48" mentions at the top of this README, and refresh the
+   upstream README section below and `CHANGELOG.upstream.md` from
+   `packages/pi-lsp/README.md` and `CHANGELOG.md` upstream.
+7. If upstream added native support for clangd, `ty`, or an equivalent
+   backend selection, drop the matching part of the fork patch.
+
+Upstream policy notes: they keep `pylsp` as the default Python server
+and have declined PRs that change defaults, so the `ty`-first order is
+expected to stay a fork-only patch.
+
 ## Install
 
     pi install git:github.com/csaez/pi-lsp
