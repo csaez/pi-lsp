@@ -1,5 +1,5 @@
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
-import { is_project_subject_trusted, read_project_trust_store, trust_project_subject, } from './vendor/pi-project-trust/index.js';
+import { is_project_subject_trusted, read_project_trust_store, trust_project_subject, } from '@spences10/pi-project-trust';
 import { join } from 'node:path';
 const LSP_PROJECT_BINARY_ENV = 'MY_PI_LSP_PROJECT_BINARY';
 export function default_lsp_trust_store_path() {

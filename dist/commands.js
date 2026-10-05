@@ -1,4 +1,4 @@
-const tui_modal = () => import('./vendor/pi-tui-modal/index.js');
+import { show_picker_modal, show_text_modal, } from '@spences10/pi-tui-modal';
 import { format_lsp_view, format_status_lines } from './format.js';
 import { list_supported_languages } from './servers.js';
 export function register_lsp_command(pi, manager) {
@@ -96,7 +96,7 @@ async function present_lsp_text(ctx, title, text) {
 async function show_lsp_home_modal(ctx, manager) {
     const running_count = manager.clients_by_server.size;
     const failed_count = manager.failed_servers.size;
-    return await (await tui_modal()).show_picker_modal(ctx, {
+    return await show_picker_modal(ctx, {
         title: 'Language servers',
         subtitle: `${running_count} running • ${failed_count} failed • ${list_supported_languages().length} supported`,
         items: [
@@ -130,7 +130,7 @@ async function show_lsp_home_modal(ctx, manager) {
     });
 }
 async function show_lsp_text_modal(ctx, title, text) {
-    await (await tui_modal()).show_text_modal(ctx, {
+    await show_text_modal(ctx, {
         title,
         text,
         max_visible_lines: 20,
@@ -138,7 +138,7 @@ async function show_lsp_text_modal(ctx, title, text) {
     });
 }
 async function handle_lsp_restart_modal(ctx, manager) {
-    const selected = await (await tui_modal()).show_picker_modal(ctx, {
+    const selected = await show_picker_modal(ctx, {
         title: 'Restart LSP server',
         subtitle: 'Clear cached language server state',
         items: [
