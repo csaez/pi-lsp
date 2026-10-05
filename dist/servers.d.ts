@@ -2,6 +2,7 @@ export interface LspServerConfig {
     language: string;
     command: string;
     args: string[];
+    backend?: string;
     install_hint?: string;
     is_project_local?: boolean;
 }
@@ -13,6 +14,10 @@ export interface ResolvedServerCommand {
 }
 export declare function resolve_server_command_info(command: string, cwd?: string): ResolvedServerCommand;
 export declare function resolve_server_command(command: string, cwd?: string): string;
-export declare function get_server_config(language: string, cwd?: string): LspServerConfig | undefined;
+export declare function get_server_config(language: string, cwd?: string, options?: {
+    global_typescript_major?: () => number | undefined;
+    env?: NodeJS.ProcessEnv;
+    allow_project_local?: boolean;
+}): LspServerConfig | undefined;
 export declare function language_id_for_file(file_path: string): string | undefined;
 export declare function find_workspace_root(file_path: string, fallback?: string): string;

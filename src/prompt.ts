@@ -1,12 +1,15 @@
+import type { BeforeAgentStartEvent } from '@earendil-works/pi-coding-agent';
+
 export const LSP_TOOL_NAMES = new Set([
-    'lsp_diagnostics',
-    'lsp_diagnostics_many',
-    'lsp_find_symbol',
-    'lsp_hover',
-    'lsp_definition',
-    'lsp_references',
-    'lsp_document_symbols',
+	'lsp_diagnostics',
+	'lsp_diagnostics_many',
+	'lsp_find_symbol',
+	'lsp_hover',
+	'lsp_definition',
+	'lsp_references',
+	'lsp_document_symbols',
 ]);
+
 export const LSP_SYSTEM_PROMPT = `
 
 ## Language server support via LSP tools
@@ -22,12 +25,22 @@ After the final relevant edit, check changed language-server-supported files wit
 Reuse passed diagnostics for review, commit, and push if file contents, dependencies, configuration, and relevant environment are unchanged. Rerun only affected or previously missing diagnostics, not because of a commit or push request alone.
 
 Prefer LSP diagnostics over guessing from build output when a file-level check is enough. Use text search for broad discovery, then LSP tools for precise type and symbol questions.`;
-export function should_inject_lsp_prompt(event) {
-    const selected_tools = event.systemPromptOptions?.selectedTools;
-    return (!selected_tools ||
-        selected_tools.some((tool) => LSP_TOOL_NAMES.has(tool)));
+
+export function should_inject_lsp_prompt(event: {
+	systemPromptOptions?: Pick<
+		BeforeAgentStartEvent['systemPromptOptions'],
+		'selectedTools'
+	>;
+}): boolean {
+	const selected_tools = event.systemPromptOptions?.selectedTools;
+	return (
+		!selected_tools ||
+		selected_tools.some((tool) => LSP_TOOL_NAMES.has(tool))
+	);
 }
-export function append_lsp_system_prompt(system_prompt) {
-    return system_prompt + LSP_SYSTEM_PROMPT;
+
+export function append_lsp_system_prompt(
+	system_prompt: string,
+): string {
+	return system_prompt + LSP_SYSTEM_PROMPT;
 }
-//# sourceMappingURL=prompt.js.map

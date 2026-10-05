@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
-import { dirname, extname, isAbsolute, join, resolve, } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { accessSync, constants, existsSync, readFileSync, realpathSync, statSync, } from 'node:fs';
+import { delimiter, dirname, extname, isAbsolute, join, resolve, } from 'node:path';
 const EXTENSION_LANGUAGES = {
     '.ts': 'typescript',
     '.tsx': 'typescript',
@@ -10,10 +11,10 @@ const EXTENSION_LANGUAGES = {
     '.mjs': 'typescript',
     '.cjs': 'typescript',
     '.py': 'python',
-    '.cpp': 'cpp',
-    '.cc': 'cpp',
-    '.cxx': 'cpp',
     '.c': 'cpp',
+    '.cc': 'cpp',
+    '.cpp': 'cpp',
+    '.cxx': 'cpp',
     '.h': 'cpp',
     '.hpp': 'cpp',
     '.hxx': 'cpp',
@@ -29,13 +30,14 @@ const LANGUAGE_SERVERS = {
         language: 'typescript',
         command: 'typescript-language-server',
         args: ['--stdio'],
+        backend: 'typescript-language-server',
         install_hint: 'Install TypeScript LSP with: pnpm add -D typescript typescript-language-server',
     },
     python: {
         language: 'python',
-        command: 'ty',
-        args: ['server'],
-        install_hint: 'Install ty with: pip install ty (https://github.com/astral-sh/ty)',
+        command: 'pylsp',
+        args: [],
+        install_hint: 'Install Python LSP with: pip install python-lsp-server',
     },
     cpp: {
         language: 'cpp',
@@ -128,11 +130,38 @@ export function resolve_server_command_info(command, cwd = process.cwd()) {
 export function resolve_server_command(command, cwd = process.cwd()) {
     return resolve_server_command_info(command, cwd).command;
 }
-export function get_server_config(language, cwd = process.cwd()) {
+export function get_server_config(language, cwd = process.cwd(), options = {}) {
     const base = LANGUAGE_SERVERS[language];
     if (!base)
         return undefined;
-    const resolved = resolve_server_command_info(base.command, cwd);
+    const allow_project_local = options.allow_project_local ?? true;
+    if (language === 'python') {
+        return resolve_python_server(cwd, options.env, allow_project_local);
+    }
+    if (language === 'typescript') {
+        const native = allow_project_local
+            ? resolve_native_typescript_server(cwd)
+            : undefined;
+        if (native)
+            return native;
+        if (!allow_project_local || !has_project_typescript(cwd)) {
+            const global_major = options.global_typescript_major?.() ??
+                resolve_global_typescript_major();
+            if (global_major !== undefined && global_major >= 7) {
+                return {
+                    language: 'typescript',
+                    command: 'tsc',
+                    args: ['--lsp', '--stdio'],
+                    backend: 'typescript-native',
+                    is_project_local: false,
+                    install_hint: 'TypeScript 7 native LSP requires tsc --lsp support on PATH.',
+                };
+            }
+        }
+    }
+    const resolved = allow_project_local
+        ? resolve_server_command_info(base.command, cwd)
+        : { command: base.command, is_project_local: false };
     return {
         ...base,
         command: resolved.command,
@@ -172,11 +201,177 @@ function ancestor_directories(start) {
     }
     return dirs;
 }
+function resolve_global_typescript_major() {
+    const result = spawnSync('tsc', ['--version'], {
+        encoding: 'utf8',
+        timeout: 2_000,
+        windowsHide: true,
+    });
+    if (result.status !== 0)
+        return undefined;
+    const match = /Version\s+(\d+)/.exec(result.stdout);
+    return match ? Number.parseInt(match[1], 10) : undefined;
+}
+function has_project_typescript(cwd) {
+    return ancestor_directories(cwd).some((dir) => existsSync(join(dir, 'node_modules', 'typescript', 'package.json')));
+}
+function resolve_native_typescript_server(cwd) {
+    for (const dir of ancestor_directories(cwd)) {
+        const package_dir = join(dir, 'node_modules', 'typescript');
+        const package_json = join(package_dir, 'package.json');
+        const command = resolve_local_binary(dir, 'tsc');
+        if (!command || !existsSync(package_json))
+            continue;
+        try {
+            const manifest = JSON.parse(readFileSync(package_json, 'utf8'));
+            const major = Number.parseInt(manifest.version?.split('.')[0] ?? '', 10);
+            if (major >= 7 &&
+                !existsSync(join(package_dir, 'lib', 'tsserver.js'))) {
+                return {
+                    language: 'typescript',
+                    command,
+                    args: ['--lsp', '--stdio'],
+                    backend: 'typescript-native',
+                    is_project_local: true,
+                    install_hint: 'TypeScript 7 native LSP requires a project-local TypeScript package with tsc --lsp support.',
+                };
+            }
+        }
+        catch {
+            continue;
+        }
+    }
+    return undefined;
+}
 function resolve_local_binary(directory, command) {
     const candidates = [
         join(directory, 'node_modules', '.bin', command),
         join(directory, 'node_modules', '.bin', `${command}.cmd`),
     ];
     return candidates.find((candidate) => existsSync(candidate));
+}
+const PYTHON_SERVER_ENV = 'MY_PI_LSP_PYTHON_SERVER';
+const PYTHON_SERVERS = {
+    ty: {
+        command: 'ty',
+        args: ['server'],
+        install_hint: 'Install ty with: pip install ty (https://github.com/astral-sh/ty)',
+    },
+    pylsp: {
+        command: 'pylsp',
+        args: [],
+        install_hint: 'Install Python LSP with: pip install python-lsp-server',
+    },
+    basedpyright: {
+        command: 'basedpyright-langserver',
+        args: ['--stdio'],
+        install_hint: 'Install Basedpyright with: pip install basedpyright',
+    },
+    pyright: {
+        command: 'pyright-langserver',
+        args: ['--stdio'],
+        install_hint: 'Install Pyright with: pip install pyright',
+    },
+};
+const TYPE_CHECKING_SERVERS = [
+    'basedpyright',
+    'pyright',
+];
+function resolve_python_server(cwd, env = process.env, allow_project_local = true) {
+    const selection = env[PYTHON_SERVER_ENV]?.trim() || 'auto';
+    if (selection !== 'auto') {
+        if (!Object.hasOwn(PYTHON_SERVERS, selection)) {
+            throw new Error(`${PYTHON_SERVER_ENV} must be auto, ty, pylsp, basedpyright, or pyright (received ${JSON.stringify(selection)}).`);
+        }
+        const backend = selection;
+        const config = (allow_project_local && find_local_server(cwd, [backend])) ||
+            find_path_server(cwd, env, [backend], allow_project_local);
+        if (config)
+            return config;
+        if (!allow_project_local) {
+            throw new Error(`No ${backend} server on PATH outside the project. ${PYTHON_SERVERS[backend].install_hint}`);
+        }
+        return server_config(backend);
+    }
+    // Fork: prefer ty when installed, then keep an existing pylsp setup,
+    // including its plugins, unchanged.
+    const config = (allow_project_local && find_local_server(cwd, ['ty'])) ||
+        find_path_server(cwd, env, ['ty'], allow_project_local) ||
+        (allow_project_local && find_local_server(cwd, ['pylsp'])) ||
+        find_path_server(cwd, env, ['pylsp'], allow_project_local) ||
+        (allow_project_local &&
+            find_local_server(cwd, TYPE_CHECKING_SERVERS)) ||
+        find_path_server(cwd, env, TYPE_CHECKING_SERVERS, allow_project_local);
+    if (config)
+        return config;
+    if (!allow_project_local) {
+        throw new Error(`No Python language server on PATH outside the project. ${PYTHON_SERVERS.ty.install_hint}`);
+    }
+    return server_config('ty');
+}
+function server_config(backend, command = PYTHON_SERVERS[backend].command, is_project_local = false) {
+    return {
+        language: 'python',
+        ...PYTHON_SERVERS[backend],
+        args: [...PYTHON_SERVERS[backend].args],
+        command,
+        backend,
+        is_project_local,
+    };
+}
+function find_local_server(cwd, backends) {
+    for (const directory of ancestor_directories(cwd)) {
+        for (const backend of backends) {
+            for (const bin_directory of python_bin_directories(directory)) {
+                const command = find_executable(bin_directory, PYTHON_SERVERS[backend].command);
+                if (command)
+                    return server_config(backend, command, true);
+            }
+        }
+    }
+    return undefined;
+}
+function find_path_server(cwd, env, backends, allow_project_local) {
+    for (const backend of backends) {
+        for (const directory of (env.PATH ?? '')
+            .split(delimiter)
+            .filter(Boolean)) {
+            const command = find_executable(directory, PYTHON_SERVERS[backend].command);
+            if (!command)
+                continue;
+            const is_project_local = ancestor_directories(cwd).some((directory) => python_bin_directories(directory).some((bin_directory) => {
+                const local = find_executable(bin_directory, PYTHON_SERVERS[backend].command);
+                return (local !== undefined &&
+                    realpathSync(local) === realpathSync(command));
+            }));
+            if (is_project_local && !allow_project_local)
+                continue;
+            return server_config(backend, command, is_project_local);
+        }
+    }
+    return undefined;
+}
+function python_bin_directories(directory) {
+    return [
+        join(directory, '.venv', process.platform === 'win32' ? 'Scripts' : 'bin'),
+        join(directory, 'node_modules', '.bin'),
+    ];
+}
+function find_executable(directory, command) {
+    // Windows shell wrappers cannot be launched by the client's shell-free spawn.
+    const extensions = process.platform === 'win32' ? ['.exe', ''] : [''];
+    for (const extension of extensions) {
+        const path = resolve(directory, command + extension);
+        try {
+            if (!statSync(path).isFile())
+                continue;
+            accessSync(path, constants.X_OK);
+            return path;
+        }
+        catch {
+            // Missing, broken, or non-executable candidates must not block discovery.
+        }
+    }
+    return undefined;
 }
 //# sourceMappingURL=servers.js.map

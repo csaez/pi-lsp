@@ -1,4 +1,4 @@
-import { show_picker_modal, show_text_modal, } from '@spences10/pi-tui-modal';
+import { show_command_output_modal, show_picker_modal, } from '@spences10/pi-tui-modal';
 import { format_lsp_view, format_status_lines } from './format.js';
 import { list_supported_languages } from './servers.js';
 export function register_lsp_command(pi, manager) {
@@ -84,7 +84,7 @@ export async function handle_lsp_command(args, ctx, manager) {
     }
 }
 function has_modal_ui(ctx) {
-    return ctx.hasUI && typeof ctx.ui.custom === 'function';
+    return ctx.mode === 'tui' && typeof ctx.ui.custom === 'function';
 }
 async function present_lsp_text(ctx, title, text) {
     if (has_modal_ui(ctx)) {
@@ -130,12 +130,7 @@ async function show_lsp_home_modal(ctx, manager) {
     });
 }
 async function show_lsp_text_modal(ctx, title, text) {
-    await show_text_modal(ctx, {
-        title,
-        text,
-        max_visible_lines: 20,
-        overlay_options: { width: '90%', minWidth: 72 },
-    });
+    await show_command_output_modal(ctx, { title, text });
 }
 async function handle_lsp_restart_modal(ctx, manager) {
     const selected = await show_picker_modal(ctx, {

@@ -1,16 +1,20 @@
 {
   "name": "pi-lsp",
-  "version": "0.0.32-clangd-ty.1",
-  "description": "Language Server Protocol tools for Pi agents — forked from @spences10/pi-lsp with clangd (C++) and ty (Python) support added.",
+  "version": "0.0.48-clangd-ty.1",
+  "description": "Fork of @spences10/pi-lsp 0.0.48 with clangd (C/C++) and ty (Python) support.",
   "keywords": [
     "language-server",
     "lsp",
     "pi",
     "pi-package"
   ],
-  "homepage": "https://github.com/spences10/my-pi/tree/main/packages/pi-lsp#readme",
+  "homepage": "https://github.com/csaez/pi-lsp#readme",
   "license": "MIT",
   "author": "Scott Spence <me@scottspence.com> (original)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/csaez/pi-lsp.git"
+  },
   "files": [
     "dist",
     "README.md"
@@ -24,37 +28,32 @@
       "default": "./dist/index.js"
     }
   },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run"
+  },
   "dependencies": {
-    "@spences10/pi-child-env": "0.1.8",
-    "@spences10/pi-project-trust": "0.0.11",
-    "@spences10/pi-tui-modal": "0.0.20"
+    "@spences10/pi-child-env": "0.1.10",
+    "@spences10/pi-project-trust": "0.0.19",
+    "@spences10/pi-tui-modal": "0.0.24"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.75.3",
-    "@types/node": "^25.8.0",
-    "typescript": "^6.0.3",
-    "vitest": "4.1.6"
+    "@earendil-works/pi-coding-agent": "^1.0.0",
+    "@types/node": "^22",
+    "typescript": "^5.9",
+    "vitest": "^3"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
     "typebox": "*"
   },
   "engines": {
-    "node": ">=24.15.0"
+    "node": ">=22"
   },
   "pi": {
     "extensions": [
       "./dist/index.js"
     ]
-  },
-  "scripts": {
-    "build": "pnpm --filter \"$npm_package_name^...\" run build:self && pnpm run build:self",
-    "build:self": "vp exec tsc -p tsconfig.build.json",
-    "check": "pnpm --filter \"$npm_package_name^...\" run build:self && pnpm run check:self",
-    "check:self": "vp exec tsc --noEmit -p tsconfig.json",
-    "test": "pnpm --filter \"$npm_package_name^...\" run build:self && pnpm run test:self",
-    "test:self": "vp exec vitest run",
-    "coverage:self": "vp exec vitest run --coverage",
-    "coverage": "pnpm --filter \"$npm_package_name^...\" run build:self && pnpm run coverage:self"
   }
 }

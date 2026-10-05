@@ -1,6 +1,8 @@
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { type LspClientOptions, type LspDiagnostic, type LspDocumentSymbol, type LspHover, type LspLocation, type LspPosition } from './client.js';
 import { type LspToolErrorDetails } from './format.js';
+export declare const DEFAULT_LSP_IDLE_TIMEOUT_MS: number;
+export declare const DEFAULT_LSP_TRUST_PROMPT_TIMEOUT_MS = 30000;
 export interface LspClientLike {
     start(): Promise<void>;
     stop(): Promise<void>;
@@ -21,6 +23,8 @@ export interface ServerState {
     workspace_root: string;
     root_uri: string;
     command: string;
+    args: string[];
+    backend?: string;
     install_hint?: string;
     active_request_count: number;
     last_used_at?: number;
@@ -44,6 +48,7 @@ export interface CreateLspServerManagerOptions {
     read_file?: (path: string) => Promise<string>;
     cwd?: () => string;
     idle_timeout_ms?: number;
+    trust_prompt_timeout_ms?: number;
 }
 export declare class LspServerManager {
     #private;
@@ -53,6 +58,6 @@ export declare class LspServerManager {
     constructor(options?: CreateLspServerManagerOptions);
     resolve_abs(file: string): string;
     clear_language_state(language?: string): Promise<void>;
-    resolve_file_state(file: string, ctx?: ExtensionContext): Promise<ResolveFileStateResult>;
+    resolve_file_state(file: string, ctx?: ExtensionContext, signal?: AbortSignal): Promise<ResolveFileStateResult>;
     release_file_state(file_state: FileState): Promise<void>;
 }

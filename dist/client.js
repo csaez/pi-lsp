@@ -21,6 +21,7 @@ export class LspClient extends EventEmitter {
     #pending = new Map();
     #buffer = Buffer.alloc(0);
     #initialized = false;
+    #supports_pull_diagnostics = false;
     #open_docs = new Map();
     #diagnostics_by_uri = new Map();
     #diagnostic_waiters = new Set();
@@ -77,12 +78,13 @@ export class LspClient extends EventEmitter {
             this.#drain_buffer();
         });
         try {
-            await Promise.race([
+            const initialize_result = await Promise.race([
                 this.#request('initialize', {
                     processId: process.pid,
                     rootUri: this.#options.root_uri,
                     capabilities: {
                         textDocument: {
+                            diagnostic: {},
                             publishDiagnostics: {
                                 relatedInformation: true,
                             },
@@ -106,6 +108,8 @@ export class LspClient extends EventEmitter {
                 }),
                 start_failure,
             ]);
+            const capabilities = initialize_result?.capabilities;
+            this.#supports_pull_diagnostics = Boolean(capabilities?.diagnosticProvider);
             this.#notify('initialized', {});
             this.#initialized = true;
             start_reject = null;
@@ -191,6 +195,12 @@ export class LspClient extends EventEmitter {
         if (this.#diagnostics_by_uri.has(uri)) {
             return this.get_diagnostics(uri);
         }
+        if (this.#supports_pull_diagnostics) {
+            const response = (await this.#request('textDocument/diagnostic', { textDocument: { uri } }, timeout_ms));
+            const diagnostics = response?.items ?? [];
+            this.#diagnostics_by_uri.set(uri, diagnostics);
+            return diagnostics;
+        }
         return new Promise((resolve) => {
             let active = true;
             const cleanup = () => {
@@ -235,6 +245,7 @@ export class LspClient extends EventEmitter {
             this.#proc = null;
         }
         this.#initialized = false;
+        this.#supports_pull_diagnostics = false;
     }
     #request(method, params, timeout_override) {
         return new Promise((resolve, reject) => {

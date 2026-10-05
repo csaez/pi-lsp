@@ -8,6 +8,8 @@ export interface LspFormatServerState {
     language: string;
     workspace_root: string;
     command: string;
+    args?: string[];
+    backend?: string;
     active_request_count?: number;
     last_used_at?: number;
 }

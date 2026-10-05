@@ -29,8 +29,8 @@ async function map_with_concurrency(items, concurrency, mapper) {
     }));
     return results;
 }
-async function with_file_state(manager, file, ctx, run) {
-    const resolved = await manager.resolve_file_state(file, ctx);
+async function with_file_state(manager, file, ctx, signal, run) {
+    const resolved = await manager.resolve_file_state(file, ctx, signal);
     if (!resolved.ok) {
         return make_tool_error(resolved.error);
     }
@@ -64,7 +64,7 @@ export function register_lsp_tools(pi, manager) {
                 description: 'Max ms to wait for diagnostics after opening the file. Default 1500.',
             })),
         }),
-        execute: async (_id, params, _signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, async (result) => {
+        execute: async (_id, params, signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, signal, async (result) => {
             const diagnostics = await result.state.client.wait_for_diagnostics(result.uri, params.wait_ms ?? 1500);
             return format_diagnostics(result.abs, diagnostics);
         }),
@@ -83,10 +83,10 @@ export function register_lsp_tools(pi, manager) {
                 description: 'Max ms to wait for diagnostics after opening each file. Default 1500.',
             })),
         }),
-        execute: async (_id, params, _signal, _on_update, ctx) => {
+        execute: async (_id, params, signal, _on_update, ctx) => {
             const wait_ms = params.wait_ms ?? 1500;
             const lines_with_stats = await map_with_concurrency(params.files, DIAGNOSTICS_MANY_CONCURRENCY, async (file) => {
-                const resolved = await manager.resolve_file_state(file, ctx);
+                const resolved = await manager.resolve_file_state(file, ctx, signal);
                 if (!resolved.ok) {
                     return {
                         line: format_tool_error(resolved.error),
@@ -164,7 +164,7 @@ export function register_lsp_tools(pi, manager) {
                 description: 'Restrict matches to these symbol kinds.',
             })),
         }),
-        execute: async (_id, params, _signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, async (result) => {
+        execute: async (_id, params, signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, signal, async (result) => {
             const symbols = await result.state.client.document_symbols(result.uri);
             return format_symbol_matches(result.abs, params.query, find_symbol_matches(symbols, params.query, {
                 max_results: params.max_results ?? 20,
@@ -177,13 +177,14 @@ export function register_lsp_tools(pi, manager) {
     pi.registerTool(defineTool({
         name: 'lsp_hover',
         label: 'LSP: hover',
+        constrainedSampling: { type: 'json_schema', strict: 'prefer' },
         description: 'Get hover info (types, docs) at a position in a file. Positions are zero-based.',
         parameters: Type.Object({
             file: Type.String(),
             line: Type.Number(),
             character: Type.Number(),
-        }),
-        execute: async (_id, params, _signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, async (result) => {
+        }, { additionalProperties: false }),
+        execute: async (_id, params, signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, signal, async (result) => {
             const hover = await result.state.client.hover(result.uri, {
                 line: params.line,
                 character: params.character,
@@ -194,13 +195,14 @@ export function register_lsp_tools(pi, manager) {
     pi.registerTool(defineTool({
         name: 'lsp_definition',
         label: 'LSP: go to definition',
+        constrainedSampling: { type: 'json_schema', strict: 'prefer' },
         description: 'Find definition locations for the symbol at a position. Positions are zero-based.',
         parameters: Type.Object({
             file: Type.String(),
             line: Type.Number(),
             character: Type.Number(),
-        }),
-        execute: async (_id, params, _signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, async (result) => {
+        }, { additionalProperties: false }),
+        execute: async (_id, params, signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, signal, async (result) => {
             const locations = await result.state.client.definition(result.uri, {
                 line: params.line,
                 character: params.character,
@@ -218,7 +220,7 @@ export function register_lsp_tools(pi, manager) {
             character: Type.Number(),
             include_declaration: Type.Optional(Type.Boolean()),
         }),
-        execute: async (_id, params, _signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, async (result) => {
+        execute: async (_id, params, signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, signal, async (result) => {
             const locations = await result.state.client.references(result.uri, {
                 line: params.line,
                 character: params.character,
@@ -229,11 +231,12 @@ export function register_lsp_tools(pi, manager) {
     pi.registerTool(defineTool({
         name: 'lsp_document_symbols',
         label: 'LSP: document symbols',
+        constrainedSampling: { type: 'json_schema', strict: 'prefer' },
         description: 'List symbols in a file (functions, classes, variables) using the language server.',
         parameters: Type.Object({
             file: Type.String(),
-        }),
-        execute: async (_id, params, _signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, async (result) => {
+        }, { additionalProperties: false }),
+        execute: async (_id, params, signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, signal, async (result) => {
             const symbols = await result.state.client.document_symbols(result.uri);
             return format_document_symbols(result.abs, symbols);
         }),
