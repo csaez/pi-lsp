@@ -1,7 +1,7 @@
 # pi-lsp (fork)
 
 Fork of [`@spences10/pi-lsp`](https://github.com/spences10/my-pi/tree/main/packages/pi-lsp)
-0.0.48 with these changes. Everything else is unchanged upstream code.
+0.0.49 with these changes. Everything else is unchanged upstream code.
 
 - **clangd** for C/C++ (`.c .cc .cpp .cxx .h .hpp .hxx`). `compile_commands.json`
   and `CMakeLists.txt` count as workspace roots.
@@ -250,6 +250,14 @@ The extension registers LSP-backed Pi tools for:
 
 These tools let the model inspect types, find usages, and catch
 diagnostics without guessing from text search alone.
+
+A diagnostics result is clean only when the language server supplied
+an empty list for the current document. If the server sends nothing
+before `wait_ms` expires, the tool reports `validation incomplete`,
+and `lsp_diagnostics_many` counts the file as `incomplete` and not as
+`clean`. An incomplete result is not a pass: retry with a larger
+`wait_ms` or use another check. Diagnostics for a closed document or
+an earlier document version are ignored.
 
 ## Model reminder
 

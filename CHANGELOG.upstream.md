@@ -1,5 +1,12 @@
 # @spences10/pi-lsp
 
+## 0.0.49
+
+### Patch Changes
+
+- fb73676: Report missing or stale language server diagnostics as
+  incomplete validation and not as a clean result.
+
 ## 0.0.48
 
 ### Patch Changes

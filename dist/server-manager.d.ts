@@ -14,7 +14,8 @@ export interface LspClientLike {
     definition(uri: string, position: LspPosition): Promise<LspLocation[]>;
     references(uri: string, position: LspPosition, include_declaration: boolean): Promise<LspLocation[]>;
     document_symbols(uri: string): Promise<LspDocumentSymbol[]>;
-    wait_for_diagnostics(uri: string, timeout_ms?: number): Promise<LspDiagnostic[]>;
+    /** Null means no result arrived before the deadline, not a clean file. */
+    wait_for_diagnostics(uri: string, timeout_ms?: number): Promise<LspDiagnostic[] | null>;
 }
 export interface ServerState {
     client: LspClientLike;

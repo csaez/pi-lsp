@@ -1,6 +1,6 @@
 import { defineTool, } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
-import { find_symbol_matches, format_diagnostics, format_document_symbols, format_hover, format_locations, format_symbol_matches, format_tool_error, SYMBOL_KIND_NAMES, SYMBOL_KIND_SCHEMA, to_lsp_tool_error, } from './format.js';
+import { find_symbol_matches, format_diagnostics, format_missing_diagnostics, format_document_symbols, format_hover, format_locations, format_symbol_matches, format_tool_error, SYMBOL_KIND_NAMES, SYMBOL_KIND_SCHEMA, to_lsp_tool_error, } from './format.js';
 const DIAGNOSTICS_MANY_CONCURRENCY = 8;
 function make_tool_result(text, details = {}) {
     return {
@@ -36,12 +36,13 @@ async function with_file_state(manager, file, ctx, signal, run) {
     }
     const { result } = resolved;
     try {
-        const text = await run(result);
-        return make_tool_result(text, {
+        const output = await run(result);
+        return make_tool_result(typeof output === 'string' ? output : output.text, {
             ok: true,
             language: result.state.language,
             command: result.state.command,
             workspace_root: result.state.workspace_root,
+            ...(typeof output === 'string' ? {} : output.details),
         });
     }
     catch (error) {
@@ -55,7 +56,7 @@ export function register_lsp_tools(pi, manager) {
     pi.registerTool(defineTool({
         name: 'lsp_diagnostics',
         label: 'LSP: diagnostics',
-        description: 'Get language server diagnostics (errors, warnings, hints) for a file. Uses the project language server and returns empty output if the file is clean.',
+        description: 'Get language server diagnostics (errors, warnings, hints) for a file. Uses the project language server and reports "no diagnostics" if the file is clean. A "validation incomplete" result means the server sent nothing in time; it is not a clean result.',
         parameters: Type.Object({
             file: Type.String({
                 description: 'Path to the file to check (relative to cwd or absolute).',
@@ -65,14 +66,21 @@ export function register_lsp_tools(pi, manager) {
             })),
         }),
         execute: async (_id, params, signal, _on_update, ctx) => with_file_state(manager, params.file, ctx, signal, async (result) => {
-            const diagnostics = await result.state.client.wait_for_diagnostics(result.uri, params.wait_ms ?? 1500);
+            const wait_ms = params.wait_ms ?? 1500;
+            const diagnostics = await result.state.client.wait_for_diagnostics(result.uri, wait_ms);
+            if (!diagnostics) {
+                return {
+                    text: format_missing_diagnostics(result.abs, wait_ms),
+                    details: { ok: false, incomplete: true },
+                };
+            }
             return format_diagnostics(result.abs, diagnostics);
         }),
     }));
     pi.registerTool(defineTool({
         name: 'lsp_diagnostics_many',
         label: 'LSP: diagnostics many',
-        description: 'Get language server diagnostics for multiple files in one call. Useful for changed-file sweeps, package-level checks, and summarization.',
+        description: 'Get language server diagnostics for multiple files in one call. Useful for changed-file sweeps, package-level checks, and summarization. Files counted as incomplete got no diagnostics in time and are not validated.',
         parameters: Type.Object({
             files: Type.Array(Type.String(), {
                 minItems: 1,
@@ -91,22 +99,29 @@ export function register_lsp_tools(pi, manager) {
                     return {
                         line: format_tool_error(resolved.error),
                         diagnostics: 0,
-                        error: true,
+                        status: 'error',
                     };
                 }
                 try {
                     const diagnostics = await resolved.result.state.client.wait_for_diagnostics(resolved.result.uri, wait_ms);
+                    if (!diagnostics) {
+                        return {
+                            line: format_missing_diagnostics(resolved.result.abs, wait_ms),
+                            diagnostics: 0,
+                            status: 'incomplete',
+                        };
+                    }
                     return {
                         line: format_diagnostics(resolved.result.abs, diagnostics),
                         diagnostics: diagnostics.length,
-                        error: false,
+                        status: 'checked',
                     };
                 }
                 catch (error) {
                     return {
                         line: format_tool_error(to_lsp_tool_error(resolved.result.abs, resolved.result.state.language, resolved.result.state.workspace_root, resolved.result.state.command, resolved.result.state.install_hint, error)),
                         diagnostics: 0,
-                        error: true,
+                        status: 'error',
                     };
                 }
                 finally {
@@ -116,11 +131,15 @@ export function register_lsp_tools(pi, manager) {
             let diagnostic_count = 0;
             let clean_count = 0;
             let error_count = 0;
+            let incomplete_count = 0;
             const lines = [];
             for (const entry of lines_with_stats) {
                 lines.push(entry.line);
-                if (entry.error) {
+                if (entry.status === 'error') {
                     error_count += 1;
+                }
+                else if (entry.status === 'incomplete') {
+                    incomplete_count += 1;
                 }
                 else {
                     diagnostic_count += entry.diagnostics;
@@ -129,14 +148,15 @@ export function register_lsp_tools(pi, manager) {
                 }
             }
             return make_tool_result([
-                `Checked ${params.files.length} file(s): ${diagnostic_count} diagnostic(s), ${clean_count} clean, ${error_count} error(s)`,
+                `Checked ${params.files.length} file(s): ${diagnostic_count} diagnostic(s), ${clean_count} clean, ${error_count} error(s)${incomplete_count ? `, ${incomplete_count} incomplete (not validated)` : ''}`,
                 ...lines,
             ].join('\n\n'), {
-                ok: error_count === 0,
+                ok: error_count === 0 && incomplete_count === 0,
                 checked: params.files.length,
                 diagnostic_count,
                 clean_count,
                 error_count,
+                incomplete_count,
             });
         },
     }));

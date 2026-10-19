@@ -80,8 +80,15 @@ export declare class LspClient extends EventEmitter {
     definition(uri: string, position: LspPosition): Promise<LspLocation[]>;
     references(uri: string, position: LspPosition, include_declaration: boolean): Promise<LspLocation[]>;
     document_symbols(uri: string): Promise<LspDocumentSymbol[]>;
-    get_diagnostics(uri: string): LspDiagnostic[];
-    wait_for_diagnostics(uri: string, timeout_ms?: number): Promise<LspDiagnostic[]>;
+    /** Diagnostics received for the current document, or null if none arrived. */
+    get_diagnostics(uri: string): LspDiagnostic[] | null;
+    /**
+     * Resolves with the diagnostics the server supplied for the current
+     * document; an empty array is an explicit clean result. Resolves with
+     * null when no result arrived before the deadline, and rejects when the
+     * client stops or the server closes while waiting.
+     */
+    wait_for_diagnostics(uri: string, timeout_ms?: number): Promise<LspDiagnostic[] | null>;
     stop(): Promise<void>;
 }
 export declare function normalize_location_result(result: LspLocation | LspLocation[] | LspLocationLink | LspLocationLink[] | null): LspLocation[];

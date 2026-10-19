@@ -34,6 +34,7 @@ export declare function format_status_lines(cwd: string, clients_by_server: Map<
 export declare function to_lsp_tool_error(file: string, language: string, workspace_root: string, command: string, install_hint: string | undefined, error: unknown): LspToolErrorDetails;
 export declare function format_tool_error(details: LspToolErrorDetails): string;
 export declare function format_diagnostics(file: string, diagnostics: LspDiagnostic[]): string;
+export declare function format_missing_diagnostics(file: string, wait_ms: number): string;
 export declare function format_hover(hover: LspHover | null): string;
 export declare function format_locations(locations: LspLocation[], empty_message: string): string;
 export declare function format_document_symbols(file: string, symbols: LspDocumentSymbol[]): string;

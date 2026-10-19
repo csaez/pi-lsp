@@ -52,10 +52,11 @@ export interface LspClientLike {
 		include_declaration: boolean,
 	): Promise<LspLocation[]>;
 	document_symbols(uri: string): Promise<LspDocumentSymbol[]>;
+	/** Null means no result arrived before the deadline, not a clean file. */
 	wait_for_diagnostics(
 		uri: string,
 		timeout_ms?: number,
-	): Promise<LspDiagnostic[]>;
+	): Promise<LspDiagnostic[] | null>;
 }
 
 export interface ServerState {

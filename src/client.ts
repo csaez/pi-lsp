@@ -117,7 +117,7 @@ export class LspClient extends EventEmitter {
 	#supports_pull_diagnostics = false;
 	#open_docs = new Map<string, { version: number; text: string }>();
 	#diagnostics_by_uri = new Map<string, LspDiagnostic[]>();
-	#diagnostic_waiters = new Set<() => void>();
+	#diagnostic_waiters = new Set<(error: Error) => void>();
 
 	constructor(options: LspClientOptions) {
 		super();
@@ -176,6 +176,9 @@ export class LspClient extends EventEmitter {
 				pending.reject(new Error('LSP server closed'));
 			}
 			this.#pending.clear();
+			this.#release_diagnostic_waiters(
+				new Error('LSP server closed'),
+			);
 			this.#initialized = false;
 			this.#proc = null;
 		});
@@ -197,6 +200,7 @@ export class LspClient extends EventEmitter {
 							diagnostic: {},
 							publishDiagnostics: {
 								relatedInformation: true,
+								versionSupport: true,
 							},
 							hover: {
 								contentFormat: ['markdown', 'plaintext'],
@@ -260,6 +264,7 @@ export class LspClient extends EventEmitter {
 		const language_id =
 			this.#options.language_id_for_uri(uri) ?? 'plaintext';
 		this.#open_docs.set(uri, { version: 1, text });
+		this.#diagnostics_by_uri.delete(uri);
 		this.#notify('textDocument/didOpen', {
 			textDocument: {
 				uri,
@@ -341,17 +346,23 @@ export class LspClient extends EventEmitter {
 		return normalize_document_symbol_result(result);
 	}
 
-	get_diagnostics(uri: string): LspDiagnostic[] {
-		return this.#diagnostics_by_uri.get(uri) ?? [];
+	/** Diagnostics received for the current document, or null if none arrived. */
+	get_diagnostics(uri: string): LspDiagnostic[] | null {
+		return this.#diagnostics_by_uri.get(uri) ?? null;
 	}
 
+	/**
+	 * Resolves with the diagnostics the server supplied for the current
+	 * document; an empty array is an explicit clean result. Resolves with
+	 * null when no result arrived before the deadline, and rejects when the
+	 * client stops or the server closes while waiting.
+	 */
 	async wait_for_diagnostics(
 		uri: string,
 		timeout_ms = 1500,
-	): Promise<LspDiagnostic[]> {
-		if (this.#diagnostics_by_uri.has(uri)) {
-			return this.get_diagnostics(uri);
-		}
+	): Promise<LspDiagnostic[] | null> {
+		const cached = this.get_diagnostics(uri);
+		if (cached) return cached;
 		if (this.#supports_pull_diagnostics) {
 			const response = (await retry_cancelled_request(
 				(remaining_ms) =>
@@ -362,27 +373,35 @@ export class LspClient extends EventEmitter {
 					),
 				timeout_ms,
 			)) as { items?: LspDiagnostic[] } | null;
-			const diagnostics = response?.items ?? [];
-			this.#diagnostics_by_uri.set(uri, diagnostics);
-			return diagnostics;
+			if (!Array.isArray(response?.items)) return null;
+			if (this.#open_docs.has(uri)) {
+				this.#diagnostics_by_uri.set(uri, response.items);
+			}
+			return response.items;
 		}
-		return new Promise((resolve) => {
+		return new Promise((resolve, reject) => {
 			let active = true;
-			const cleanup = () => {
-				if (!active) return;
+			const cleanup = (): boolean => {
+				if (!active) return false;
 				active = false;
 				this.off('diagnostics', handler);
 				clearTimeout(timer);
-				this.#diagnostic_waiters.delete(cleanup);
-				resolve(this.get_diagnostics(uri));
+				this.#diagnostic_waiters.delete(release);
+				return true;
+			};
+			const settle = () => {
+				if (cleanup()) resolve(this.get_diagnostics(uri));
+			};
+			const release = (error: Error) => {
+				if (cleanup()) reject(error);
 			};
 			const handler = (event_uri: string) => {
 				if (event_uri !== uri) return;
-				cleanup();
+				settle();
 			};
-			const timer = setTimeout(cleanup, timeout_ms);
+			const timer = setTimeout(settle, timeout_ms);
 			this.on('diagnostics', handler);
-			this.#diagnostic_waiters.add(cleanup);
+			this.#diagnostic_waiters.add(release);
 		});
 	}
 
@@ -400,15 +419,21 @@ export class LspClient extends EventEmitter {
 			pending.reject(new Error('LSP client stopped'));
 		}
 		this.#pending.clear();
-		for (const cleanup of Array.from(this.#diagnostic_waiters)) {
-			cleanup();
-		}
+		this.#release_diagnostic_waiters(new Error('LSP client stopped'));
+		this.#open_docs.clear();
+		this.#diagnostics_by_uri.clear();
 		if (this.#proc) {
 			this.#proc.kill();
 			this.#proc = null;
 		}
 		this.#initialized = false;
 		this.#supports_pull_diagnostics = false;
+	}
+
+	#release_diagnostic_waiters(error: Error): void {
+		for (const release of Array.from(this.#diagnostic_waiters)) {
+			release(error);
+		}
 	}
 
 	#request(
@@ -523,8 +548,19 @@ export class LspClient extends EventEmitter {
 		) {
 			const params = message.params as {
 				uri: string;
+				version?: number | null;
 				diagnostics: LspDiagnostic[];
 			};
+			// Diagnostics for a closed document or an earlier version are
+			// stale; they must not answer for the current text.
+			const open_doc = this.#open_docs.get(params.uri);
+			if (!open_doc) return;
+			if (
+				typeof params.version === 'number' &&
+				params.version !== open_doc.version
+			) {
+				return;
+			}
 			this.#diagnostics_by_uri.set(params.uri, params.diagnostics);
 			this.emit('diagnostics', params.uri);
 			return;

@@ -64,7 +64,7 @@ describe('TypeScript 7 native LSP integration', () => {
 				uri,
 				5_000,
 			);
-			expect(diagnostics.some((item) => item.severity === 1)).toBe(
+			expect(diagnostics?.some((item) => item.severity === 1)).toBe(
 				true,
 			);
 			expect(

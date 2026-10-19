@@ -188,6 +188,9 @@ export function format_diagnostics(file, diagnostics) {
     }
     return lines.join('\n');
 }
+export function format_missing_diagnostics(file, wait_ms) {
+    return `${file}: validation incomplete; the language server sent no diagnostics within ${wait_ms}ms. This is not a clean result. Retry with a larger wait_ms or use another check.`;
+}
 export function format_hover(hover) {
     if (!hover)
         return 'No hover info.';
