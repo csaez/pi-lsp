@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { pathToFileURL } from 'node:url';
 import { create_child_process_env } from './env.js';
+import { retry_cancelled_request } from './retry.js';
 export class LspClientStartError extends Error {
     command;
     args;
@@ -196,7 +197,7 @@ export class LspClient extends EventEmitter {
             return this.get_diagnostics(uri);
         }
         if (this.#supports_pull_diagnostics) {
-            const response = (await this.#request('textDocument/diagnostic', { textDocument: { uri } }, timeout_ms));
+            const response = (await retry_cancelled_request((remaining_ms) => this.#request('textDocument/diagnostic', { textDocument: { uri } }, remaining_ms), timeout_ms));
             const diagnostics = response?.items ?? [];
             this.#diagnostics_by_uri.set(uri, diagnostics);
             return diagnostics;

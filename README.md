@@ -1,15 +1,21 @@
 # pi-lsp (fork)
 
 Fork of [`@spences10/pi-lsp`](https://github.com/spences10/my-pi/tree/main/packages/pi-lsp)
-0.0.48 with two additions. Everything else is unchanged upstream code.
+0.0.48 with these changes. Everything else is unchanged upstream code.
 
 - **clangd** for C/C++ (`.c .cc .cpp .cxx .h .hpp .hxx`). `compile_commands.json`
   and `CMakeLists.txt` count as workspace roots.
 - **ty** (Astral) for Python. In auto mode `ty` is tried first (project
   `.venv`, then PATH), then the upstream order (pylsp, basedpyright, pyright).
   `MY_PI_LSP_PYTHON_SERVER=ty|pylsp|basedpyright|pyright` still forces one.
+- **Pull-diagnostic retry.** Requests the server cancels with
+  `-32802 ServerCancelled` or `-32801 ContentModified` are retried within the
+  `wait_ms` budget. ty cancels pending diagnostics whenever another file is
+  opened, so without this `lsp_diagnostics_many` reported every file as
+  "python LSP unavailable".
 
-The diff against upstream is confined to `src/servers.ts` and its tests.
+The diff against upstream is `src/servers.ts`, one call site in
+`src/client.ts`, the fork-only `src/retry.ts`, and their tests.
 `dist/` is committed because pi installs git packages without building.
 
 ## Updating from upstream (instructions for humans and AI agents)
@@ -31,6 +37,14 @@ Keep this list current. Everything not listed must equal upstream.
   `MY_PI_LSP_PYTHON_SERVER`; auto mode tries `ty` before `pylsp`;
   final fallback and "no server" error hint use `ty`.
 - `src/servers.test.ts`: tests for the above.
+- `src/retry.ts`, `src/retry.test.ts`: fork-only files (upstream has no
+  equivalent), so syncs never touch them.
+- `src/client.ts`: import of `retry_cancelled_request` and, in the
+  pull-diagnostics branch of `wait_for_diagnostics`, the
+  `textDocument/diagnostic` request wrapped in
+  `retry_cancelled_request((remaining_ms) => this.#request(..., remaining_ms), timeout_ms)`.
+  If that branch conflicts, keep upstream's version and re-wrap the request.
+  Drop the wrap (and `retry.ts`) if upstream starts handling -32802 itself.
 - Tooling differences (not upstream's): plain `tsc` + `vitest` instead of
   `vite-plus`/pnpm, `typescript` ^7 (the TS 7 native LSP integration tests need it; TS 5 fails them), pinned versions instead of `workspace:*`/`catalog:`
   in `package.json`, committed `dist/`, `scripts/`, `.upstream-base`.
@@ -40,8 +54,8 @@ Keep this list current. Everything not listed must equal upstream.
 1. `scripts/sync-upstream.sh` (optionally pass a ref, default
    `upstream/main`). It 3-way merges `src/` and `test/` from
    `.upstream-base` -> new upstream, rewriting `vite-plus/test` imports to
-   `vitest`. Fork changes in `servers.ts` and `servers.test.ts` are
-   preserved. On a clean run it updates `.upstream-base`.
+   `vitest`. Fork changes in `servers.ts`, `servers.test.ts` and
+   `client.ts` are preserved; fork-only files are left alone. On a clean run it updates `.upstream-base`.
 2. Conflicts show as `<<<<<<< fork` / `>>>>>>> upstream` markers. The
    likely spot is the Python resolution in `servers.ts`
    (`resolve_python_server`). Keep upstream's new logic and re-apply the

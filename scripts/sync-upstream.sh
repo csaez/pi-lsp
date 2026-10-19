@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sync src/ and test/ from upstream (spences10/my-pi, packages/pi-lsp) with a
-# 3-way merge, so fork changes (servers.ts, servers.test.ts) are preserved.
+# 3-way merge, so fork changes (servers.ts, servers.test.ts, client.ts) are preserved.
 # Usage: scripts/sync-upstream.sh [upstream-ref]   (default: upstream/main)
 # Records the new base in .upstream-base only when every file merged cleanly.
 set -euo pipefail
