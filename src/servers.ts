@@ -15,6 +15,7 @@ import {
 	join,
 	resolve,
 } from 'node:path';
+import { load_server_override } from './config.js';
 
 export interface LspServerConfig {
 	language: string;
@@ -199,6 +200,20 @@ export function get_server_config(
 	const base = LANGUAGE_SERVERS[language];
 	if (!base) return undefined;
 	const allow_project_local = options.allow_project_local ?? true;
+	const override = load_server_override(language, cwd, {
+		env: options.env,
+		allow_project: allow_project_local,
+	});
+	if (override) {
+		// Project-sourced commands go through the project-binary trust gate.
+		return {
+			language,
+			command: override.command,
+			args: override.args,
+			backend: 'custom',
+			is_project_local: override.source === 'project',
+		};
+	}
 	if (language === 'python') {
 		return resolve_python_server(
 			cwd,

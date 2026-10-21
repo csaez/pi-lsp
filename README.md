@@ -14,8 +14,37 @@ Fork of [`@spences10/pi-lsp`](https://github.com/spences10/my-pi/tree/main/packa
   opened, so without this `lsp_diagnostics_many` reported every file as
   "python LSP unavailable".
 
+- **User-defined servers.** Optional `pi-lsp.json` overrides the server
+  command per language (see below).
+
 The diff against upstream is `src/servers.ts`, one call site in
-`src/client.ts`, the fork-only `src/retry.ts`, and their tests.
+`src/client.ts`, the fork-only `src/retry.ts` and `src/config.ts`, and
+their tests.
+
+## Custom server config
+
+Optional. Create `~/.pi/agent/pi-lsp.json` (or point `MY_PI_LSP_CONFIG`
+at another file):
+
+    {
+      "servers": {
+        "cpp": { "command": "ccls", "args": [] },
+        "rust": { "command": "/opt/ra/rust-analyzer" }
+      }
+    }
+
+- Keys are the built-in language names (`typescript`, `python`, `cpp`,
+  `rust`, `go`, `ruby`, `java`, `lua`, `svelte`). New languages or
+  extensions are not supported.
+- An override replaces the built-in discovery for that language,
+  including `MY_PI_LSP_PYTHON_SERVER`.
+- `<workspace>/.pi/pi-lsp.json` has the same format and wins over the
+  global file. Because a cloned repo could point it at any binary, it is
+  treated as project-local and goes through the existing
+  `MY_PI_LSP_PROJECT_BINARY` trust prompt; if declined, the global file
+  or built-in server is used.
+- Missing or invalid files are ignored. Uninstalling: `pi remove` and
+  delete `pi-lsp.json`; `settings.json` is never touched.
 `dist/` is committed because pi installs git packages without building.
 
 ## Updating from upstream (instructions for humans and AI agents)
@@ -37,6 +66,11 @@ Keep this list current. Everything not listed must equal upstream.
   `MY_PI_LSP_PYTHON_SERVER`; auto mode tries `ty` before `pylsp`;
   final fallback and "no server" error hint use `ty`.
 - `src/servers.test.ts`: tests for the above.
+- `src/servers.ts` (also): import of `load_server_override` and, in
+  `get_server_config` right after `allow_project_local` is set, an early
+  return for a user override. Re-apply if that spot conflicts.
+- `src/config.ts`, `src/config.test.ts`: fork-only files (loader for
+  `pi-lsp.json`).
 - `src/retry.ts`, `src/retry.test.ts`: fork-only files (upstream has no
   equivalent), so syncs never touch them.
 - `src/client.ts`: import of `retry_cancelled_request` and, in the
